@@ -1,7 +1,25 @@
 [project]
 name = "nlp"
 version = "0.1.0"
-description = "Add your description here"
+description = "Abductive commonsense reasoning on ART with frozen GloVe embeddings and RNNs"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "datasets>=5.1.0",
+    "numpy>=2.5.4",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.3",
+    "torch>=2.14.1",
+    "tqdm>=4.70.1",
+    "wandb>=0.31.0",
+]
+
+# CUDA build of PyTorch on Windows (PyPI only has CPU wheels there).
+# Linux uses the PyPI wheels, which already include CUDA.
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]

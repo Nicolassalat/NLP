@@ -1,0 +1,20 @@
+# uv run wandb sweep sweeps/bag.yaml, then: uv run wandb agent <sweep-id>
+program: abductive/train.py
+command: [uv, run, python, -m, abductive.train, --model, bag]
+method: bayes
+metric:
+  name: val/acc
+  goal: maximize
+parameters:
+  lr:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.01
+  hidden:
+    values: [128, 256, 512]
+  dropout:
+    values: [0.0, 0.2, 0.4]
+  batch_size:
+    values: [64, 128, 256]
+  emb_dim:
+    values: [100, 300]
