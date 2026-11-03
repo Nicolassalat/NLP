@@ -36,12 +36,11 @@ def parse_args(argv=None):
     p.add_argument("--rnn-hidden", type=int, default=128)
     p.add_argument("--bidirectional", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--pooling", choices=["last", "max"], default="max")
-    p.add_argument("--epochs", type=int, default=10)
+    p.add_argument("--epochs", type=int, default=30)
     p.add_argument("--batch-size", type=int, default=128)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight-decay", type=float, default=1e-4)
-    p.add_argument("--patience", type=int, default=3, help="epochs without val improvement before stopping")
-    p.add_argument("--val-fraction", type=float, default=0.05)
+    p.add_argument("--patience", type=int, default=5, help="epochs without val improvement before stopping")
     p.add_argument("--max-train", type=int, default=None, help="subsample train for quick runs")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None, help="cuda or cpu; defaults to cuda when available")
@@ -49,6 +48,7 @@ def parse_args(argv=None):
     p.add_argument("--out-dir", type=Path, default=Path("checkpoints"))
     p.add_argument("--project", default="art-abductive")
     p.add_argument("--no-wandb", action="store_true")
+    p.add_argument("--run-name", default=None, help="W&B run name (default: random)")
     return p.parse_args(argv)
 
 
@@ -85,6 +85,7 @@ def main(argv=None):
 
     run = wandb.init(
         project=args.project,
+        name=args.run_name,
         config={k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
         mode="disabled" if args.no_wandb else None,
     )
@@ -93,7 +94,7 @@ def main(argv=None):
         if hasattr(args, key) and not isinstance(getattr(args, key), Path):
             setattr(args, key, value)
 
-    splits = load_splits(args.val_fraction, args.seed)
+    splits = load_splits()
     stoi, vectors = build_embeddings(splits, args.emb_dim, args.data_dir)
     if args.max_train:
         splits["train"] = random.Random(args.seed).sample(splits["train"], args.max_train)
@@ -124,7 +125,7 @@ def main(argv=None):
     loss_fn = nn.CrossEntropyLoss()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    ckpt_path = args.out_dir / f"{run.name or 'local'}-{args.model}.pt"
+    ckpt_path = args.out_dir / f"{run.id or 'local'}-{args.model}.pt"  # id, so renaming a run in W&B does not break lookups
     best_val, bad_epochs, step = -1.0, 0, 0
 
     for epoch in range(1, args.epochs + 1):

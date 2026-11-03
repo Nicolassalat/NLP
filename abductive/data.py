@@ -1,14 +1,13 @@
 """Loading, tokenizing and batching the ART (alpha-NLI) dataset."""
 
-import random
 import re
-from collections import defaultdict
 from dataclasses import dataclass
 
 import torch
 from datasets import load_dataset
 from torch.utils.data import Dataset
 
+DATASET = "amarfurt/art-nlp-hs26"  # course version of ART
 PAD, UNK, SEP = "<pad>", "<unk>", "<sep>"
 FIELDS = ("observation_1", "observation_2", "hypothesis_1", "hypothesis_2")
 
@@ -21,28 +20,15 @@ def tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.lower())
 
 
-def load_splits(val_fraction: float, seed: int) -> dict[str, list[dict]]:
-    """Return train/val/test splits.
+def load_splits() -> dict[str, list[dict]]:
+    """Return the course splits of ART (amarfurt/art-nlp-hs26).
 
-    The official dev set serves as the test set because the test labels are
-    not public. The validation set is carved out of train by story, i.e. by
-    the (O1, O2) pair, since every story appears many times in train with
-    different hypothesis pairs and a random split would leak.
+    train 16,801 / val 1,000 / test 1,532. Duplicate observations were removed and
+    the splits were made by the course. The test set equals the official ART dev
+    set (the original test labels are not public).
     """
-    raw = load_dataset("allenai/art")
-
-    stories = defaultdict(list)
-    for ex in raw["train"]:
-        stories[(ex["observation_1"], ex["observation_2"])].append(ex)
-    keys = sorted(stories)
-    random.Random(seed).shuffle(keys)
-    n_val = int(len(keys) * val_fraction)
-
-    return {
-        "train": [ex for k in keys[n_val:] for ex in stories[k]],
-        "val": [ex for k in keys[:n_val] for ex in stories[k]],
-        "test": list(raw["validation"]),
-    }
+    raw = load_dataset(DATASET)
+    return {"train": list(raw["train"]), "val": list(raw["validation"]), "test": list(raw["test"])}
 
 
 class ARTDataset(Dataset):

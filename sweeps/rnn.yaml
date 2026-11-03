@@ -1,7 +1,7 @@
 # uv run wandb sweep sweeps/rnn.yaml, then: uv run wandb agent --count 8 <sweep-id>
-# Each run takes a while on CPU, so the epochs are capped.
+# Epochs are capped; early stopping usually ends a run before that.
 program: abductive/train.py
-command: [uv, run, python, -m, abductive.train, --model, rnn, --epochs, "4"]
+command: [uv, run, python, -m, abductive.train, --model, rnn, --epochs, "20"]
 method: bayes
 metric:
   name: val/acc
@@ -12,7 +12,7 @@ parameters:
   pooling:
     values: [last, max]
   rnn_hidden:
-    values: [64, 128]
+    values: [128, 256]
   lr:
     distribution: log_uniform_values
     min: 0.0003

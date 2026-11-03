@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 
-from abductive.data import FIELDS, PAD, SEP, UNK, tokenize
+from abductive.data import DATASET, FIELDS, PAD, SEP, UNK, tokenize
 
 GLOVE_URL = "https://huggingface.co/stanfordnlp/glove/resolve/main/glove.6B.zip"
 
@@ -17,7 +17,7 @@ def build_embeddings(splits: dict[str, list[dict]], dim: int, data_dir: Path) ->
     <sep> gets a fixed random vector. Everything stays frozen during training.
     The result is cached because scanning the GloVe file takes a while.
     """
-    cache = data_dir / f"glove.6B.{dim}d.vocab.pt"
+    cache = data_dir / f"glove.6B.{dim}d.{DATASET.split('/')[-1]}.vocab.pt"
     if cache.exists():
         saved = torch.load(cache)
         return saved["stoi"], saved["vectors"]

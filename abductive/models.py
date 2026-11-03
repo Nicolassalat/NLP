@@ -1,6 +1,8 @@
 """The two architectures. Both score each hypothesis separately; the two
 scores are the logits of a 2-way classification."""
 
+import re
+
 import torch
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
@@ -66,29 +68,42 @@ class RNNScorer(nn.Module):
         super().__init__()
         self.embedding = nn.Embedding.from_pretrained(vectors, freeze=True, padding_idx=0)
         rnn_cls = {"lstm": nn.LSTM, "gru": nn.GRU}[cell]
-        self.rnn = rnn_cls(
-            vectors.size(1),
-            rnn_hidden,
-            num_layers=2,
-            batch_first=True,
-            dropout=dropout,
-            bidirectional=bidirectional,
+        self.bidirectional = bidirectional
+        directions = 2 if bidirectional else 1
+        # Two stacked single-layer RNNs with dropout in between. This is what
+        # nn.LSTM/nn.GRU(num_layers=2, dropout=p) computes, but the built-in
+        # inter-layer dropout makes cuDNN keep a dropout state that crashes the
+        # process at exit on Windows (exit code 0xC0000409).
+        self.layers = nn.ModuleList(
+            [
+                rnn_cls(in_dim, rnn_hidden, batch_first=True, bidirectional=bidirectional)
+                for in_dim in (vectors.size(1), rnn_hidden * directions)
+            ]
         )
         self.pooling = pooling
         self.dropout = nn.Dropout(dropout)
-        out_dim = rnn_hidden * (2 if bidirectional else 1)
-        self.classifier = classifier(out_dim, hidden, dropout)
+        self.classifier = classifier(rnn_hidden * directions, hidden, dropout)
+        self._register_load_state_dict_pre_hook(self._rename_fused_keys)
+
+    @staticmethod
+    def _rename_fused_keys(state_dict, prefix, *args):
+        """Load checkpoints saved with the fused num_layers=2 module (rnn.weight_ih_l1 -> layers.1.weight_ih_l0)."""
+        for key in [k for k in state_dict if k.startswith(prefix + "rnn.")]:
+            name, layer, reverse = re.fullmatch(r"(.+)_l(\d+)(_reverse)?", key[len(prefix + "rnn.") :]).groups()
+            state_dict[f"{prefix}layers.{layer}.{name}_l0{reverse or ''}"] = state_dict.pop(key)
 
     def forward(self, batch):
         tokens, lengths = batch["tokens"], batch["lengths"]
         emb = self.dropout(self.embedding(tokens))
-        packed = pack_padded_sequence(emb, lengths.cpu(), batch_first=True, enforce_sorted=False)
-        out, state = self.rnn(packed)
+        out = pack_padded_sequence(emb, lengths.cpu(), batch_first=True, enforce_sorted=False)
+        for i, layer in enumerate(self.layers):
+            if i:
+                out = out._replace(data=self.dropout(out.data))
+            out, state = layer(out)
 
         if self.pooling == "last":
             h_n = state[0] if isinstance(state, tuple) else state  # LSTM returns (h, c)
-            directions = 2 if self.rnn.bidirectional else 1
-            rep = torch.cat(list(h_n[-directions:]), dim=-1)  # top layer, all directions
+            rep = torch.cat(list(h_n), dim=-1)  # top layer, all directions
         else:
             out, _ = pad_packed_sequence(out, batch_first=True, padding_value=float("-inf"))
             rep = out.max(dim=1).values
